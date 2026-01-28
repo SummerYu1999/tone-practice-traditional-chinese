@@ -1,5 +1,7 @@
 # tone-practice-traditional-chinese
-There are five different tones in Chinese, and this is the tool to make sure if your tone right or not.
+There are five different tones in Chinese, and this is the tool to make sure that your tone is right or not.
+這個工具可以幫助你知曉你在發音5個聲調(輕聲、一聲、二聲、三聲、四聲)時是否使用正確音調。
+
 <script>
 let audioCtx, analyser, dataArray;
 let minHz = 100, maxHz = 350, isCalib = false;
