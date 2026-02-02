@@ -1,109 +1,131 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-<meta charset="UTF-8" />
-<title>五度聲調即時回饋</title>
-<style>
-  body { font-family: sans-serif; background:#111; color:#eee; }
-  canvas { background:#000; display:block; margin:10px auto; }
-  button { font-size:16px; padding:6px 12px; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日常單詞隨機生成器 - 繁體注音版</title>
+    <style>
+        :root {
+            --bg-color: #f7f9fc;
+            --text-color: #2d3436;
+            --accent-color: #0984e3;
+            --ruby-color: #d63031;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: "標楷體", "DFKai-SB", serif;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* 台灣標準：注音在右側的關鍵 CSS */
+        ruby {
+            font-size: 6rem;
+            ruby-position: ruby-text; /* 標準定位 */
+            margin: 0 10px;
+        }
+
+        /* 針對支援直排注音的瀏覽器優化 */
+        rt {
+            font-size: 1.5rem;
+            color: var(--ruby-color);
+            writing-mode: vertical-rl; /* 強制注音直打 */
+            text-orientation: upright;
+            user-select: none;
+        }
+
+        .category-tag {
+            font-size: 1.2rem;
+            background: #dfe6e9;
+            padding: 5px 15px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        button {
+            margin-top: 50px;
+            padding: 15px 40px;
+            font-size: 1.4rem;
+            cursor: pointer;
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background-color: #74b9ff;
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+    </style>
 </head>
 <body>
-<h3>校正：請用正常速度唸「一二三四五」</h3>
-<button id="start">開始</button>
-<canvas id="cv" width="800" height="300"></canvas>
 
-<script>
-const canvas = document.getElementById("cv");
-const ctx = canvas.getContext("2d");
-const W = canvas.width, H = canvas.height;
+    <div class="container">
+        <div id="category" class="category-tag">點擊下方按鈕</div>
+        <div id="word-display">
+            <ruby>歡迎<rt>ㄏㄨㄢㄧㄥˊ</rt></ruby>使用
+        </div>
+        <br>
+        <button onclick="generate()">隨機換單詞</button>
+    </div>
 
-let audioCtx, analyser, data;
-let f0Min=null, f0Max=null;
-let buffer=[], timeBuf=[];
-const WINDOW_SEC = 2.0;
-const ANCHOR = 0.8;
-let startTime = null;
-let emaPrev = null;
-const ALPHA = 0.3;
+    <script>
+        // 大量詞庫：[漢字陣列, 注音陣列, 分類]
+        // 這樣分開寫，才能確保每個字對應到正確的右側注音
+        const wordLib = [
+            {w: ["蘋", "果"], z: ["ㄆㄧㄥˊ", "ㄍㄨㄛˇ"], c: "水果"},
+            {w: ["香", "蕉"], z: ["ㄒㄧㄤ", "ㄐㄧㄠ"], c: "水果"},
+            {w: ["西", "瓜"], z: ["ㄒㄧ", "ㄍㄨㄚ"], c: "水果"},
+            {w: ["三", "明", "治"], z: ["ㄙㄢ", "ㄇㄧㄥˊ", "ㄓˋ"], c: "食物"},
+            {w: ["漢", "堡"], z: ["ㄏㄢˋ", "ㄅㄠˇ"], c: "食物"},
+            {w: ["腳", "踏", "車"], z: ["ㄐㄧㄠˇ", "ㄊㄚˋ", "ㄔㄜ"], c: "交通"},
+            {w: ["捷", "運"], z: ["ㄐㄧㄝˊ", "ㄩㄣˋ"], c: "交通"},
+            {w: ["鉛", "筆"], z: ["ㄑㄧㄢ", "ㄅㄧˇ"], c: "文具"},
+            {w: ["橡", "皮", "擦"], z: ["ㄒㄧㄤˋ", "ㄆㄧˊ", "ㄘㄚ"], c: "文具"},
+            {w: ["長", "頸", "鹿"], z: ["ㄔㄤˊ", "ㄐㄧㄥˇ", "ㄌㄨˋ"], c: "動物"},
+            {w: ["老", "虎"], z: ["ㄌㄠˇ", "ㄏㄨˇ"], c: "動物"},
+            {w: ["圖", "書", "館"], z: ["ㄊㄨˊ", "ㄕㄨ", "ㄍㄨㄢˇ"], c: "場所"},
+            {w: ["游", "泳", "池"], z: ["ㄧㄡˊ", "ㄩㄥˇ", "ㄔˊ"], c: "場所"},
+            {w: ["牙", "刷"], z: ["ㄧㄚˊ", "ㄕㄨㄚ"], c: "生活"},
+            {w: ["吹", "風", "機"], z: ["ㄔㄨㄟ", "ㄈㄥ", "ㄐㄧ"], c: "生活"},
+            {w: ["電視", "機"], z: ["ㄉㄧㄢˋ ㄕˋ", "ㄐㄧ"], c: "家電"}
+            // ... 你可以仿照格式繼續往下增加
+        ];
 
-// ---- 簡化 YIN（可即時跑）----
-function yinPitch(buf, sr) {
-  const N = buf.length;
-  let minTau = sr/500, maxTau = sr/80;
-  let bestTau = -1, bestVal = 1e9;
-  for (let tau=minTau; tau<maxTau; tau++) {
-    let sum=0;
-    for (let i=0;i<N-tau;i++){
-      let d=buf[i]-buf[i+tau];
-      sum+=d*d;
-    }
-    if (sum<bestVal){ bestVal=sum; bestTau=tau; }
-  }
-  return bestTau>0 ? sr/bestTau : null;
-}
-
-function smooth(v){
-  if (emaPrev==null) emaPrev=v;
-  emaPrev = ALPHA*v + (1-ALPHA)*emaPrev;
-  return emaPrev;
-}
-
-function draw(){
-  ctx.clearRect(0,0,W,H);
-  ctx.strokeStyle="#0f0";
-  ctx.beginPath();
-  for(let i=0;i<buffer.length;i++){
-    const t = timeBuf[i];
-    const x = W*(ANCHOR + (t - (performance.now()/1000))/WINDOW_SEC);
-    const y = H*(1 - (buffer[i]-1)/4);
-    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-  }
-  ctx.stroke();
-}
-
-async function start(){
-  audioCtx = new AudioContext();
-  const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-  const src = audioCtx.createMediaStreamSource(stream);
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 2048;
-  data = new Float32Array(analyser.fftSize);
-  src.connect(analyser);
-  startTime = performance.now()/1000;
-  loop();
-}
-
-function loop(){
-  analyser.getFloatTimeDomainData(data);
-  const f0 = yinPitch(data, audioCtx.sampleRate);
-  if (f0){
-    // 校正階段
-    if (f0Min==null){
-      f0Min=f0; f0Max=f0;
-    } else {
-      f0Min = Math.min(f0Min, f0);
-      f0Max = Math.max(f0Max, f0);
-    }
-    if (f0Max > f0Min){
-      let tone = 1 + 4*(f0 - f0Min)/(f0Max - f0Min);
-      tone = Math.max(1, Math.min(5, tone));
-      tone = smooth(tone);
-      const now = performance.now()/1000;
-      buffer.push(tone);
-      timeBuf.push(now);
-      // 移除過舊資料
-      while (timeBuf[0] < now - WINDOW_SEC){
-        buffer.shift(); timeBuf.shift();
-      }
-      draw();
-    }
-  }
-  requestAnimationFrame(loop);
-}
-
-document.getElementById("start").onclick = start;
-</script>
+        function generate() {
+            const display = document.getElementById('word-display');
+            const cat = document.getElementById('category');
+            
+            const item = wordLib[Math.floor(Math.random() * wordLib.length)];
+            
+            let htmlContent = "";
+            // 將每個字及其注音封裝在 ruby 中，實現一對一右側排列
+            for (let i = 0; i < item.w.length; i++) {
+                htmlContent += `<ruby>${item.w[i]}<rt>${item.z[i]}</rt></ruby>`;
+            }
+            
+            display.innerHTML = htmlContent;
+            cat.innerText = item.c;
+        }
+    </script>
 </body>
 </html>
